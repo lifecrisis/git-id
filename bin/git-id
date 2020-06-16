@@ -1,0 +1,174 @@
+#!/bin/bash
+
+
+# shellcheck disable=SC2034
+USAGE='[<options>]
+  -u NAME  use identity NAME in the current repository
+  -s NAME  save the current settings as identity NAME
+  -h       print this help message and exit
+
+  With no options, print the active identity.  NAME must contain only
+  lower-case ASCII characters.  When displayed, a "*" after NAME indicates
+  that the identity has been modified locally.
+'
+
+# shellcheck disable=SC2034
+SUBDIRECTORY_OK=1
+
+# shellcheck disable=SC1090
+source "$(git --exec-path)/git-sh-setup"
+
+set -o errexit
+set -o nounset
+
+main() {
+
+  if [[ $# -eq 0 ]]; then
+    print_id
+    exit
+  fi
+
+  while getopts ':u:s:' opt; do
+
+    if [[ $opt = '?' ]]; then
+      die "git-id: invalid option -- '$OPTARG'"
+    fi
+
+    if [[ $opt = ':' ]]; then
+      die "git-id: option requires an argument -- '$OPTARG'"
+    fi
+
+    # Use "$OPTARG" to reference the current option argument.
+    case $opt in
+      u) use_id "$OPTARG" ;;
+      s) save_id "$OPTARG" ;;
+      *) ;;
+    esac
+
+  done
+  shift $((OPTIND - 1))
+}
+
+print_id() {
+  local id
+
+  id=$(get_id)
+
+  if id_is_modified; then
+    id+='*'
+  fi
+
+  printf '%s\n' "$id"
+  printf '%s\n' "$id" | sed 's/./-/g'
+
+  printf 'user.name       = "%s"\n' "$(get_attr user.name)"
+  printf 'user.email      = "%s"\n' "$(get_attr user.email)"
+  printf 'user.signingKey = "%s"\n' "$(get_attr user.signingKey)"
+  printf 'commit.gpgSign  = "%s"\n' "$(get_attr commit.gpgSign)"
+}
+
+save_id() {
+  check_id "$1"
+
+  local file name email key sign
+
+  file="$HOME/.gitid/$1"
+  name=$(get_attr user.name)
+  email=$(get_attr user.email)
+  key=$(get_attr user.signingKey)
+  sign=$(get_attr commit.gpgSign)
+
+  clear_id
+  git config --file "$file" user.name "$name"
+  git config --file "$file" user.email "$email"
+  git config --file "$file" user.signingKey "$key"
+  git config --file "$file" commit.gpgSign "$sign"
+
+  # shellcheck disable=SC2088
+  git config --local include.path "~/.gitid/$1"
+}
+
+use_id() {
+  check_id "$1"
+
+  if [[ ! -f ~/.gitid/$1 ]]; then
+    die 'git-id: not found'
+  fi
+
+  clear_id
+
+  # shellcheck disable=SC2088
+  git config --local include.path "~/.gitid/$1"
+}
+
+clear_id() {
+  git config --local --unset-all commit.gpgSign || true
+  git config --local --unset-all user.email || true
+  git config --local --unset-all user.name || true
+  git config --local --unset-all user.signingKey || true
+  git config --local --unset-all include.path '^~/\.gitid/.*' || true
+}
+
+get_id() {
+  local name path
+
+  path=$(git config --local --get --default '' include.path '^~/\.gitid/.*')
+  name=${path##*/}
+
+  if [[ -z $name ]]; then
+    printf 'NONE'
+    return
+  fi
+
+  printf '%s' "$name"
+}
+
+get_attr() {
+  git config --local --include --get --default '' "$1"
+}
+
+get_id_attr() {
+  local id="$1" attr="$2"
+  local file="$HOME/.gitid/$id"
+
+  git config --file "$file" --get --default '' "$attr"
+}
+
+check_id() {
+
+  if [[ ! $1 =~ ^[a-z]+$ ]]; then
+    die 'git-id: invalid id name'
+  fi
+}
+
+id_is_modified() {
+  local id
+
+  id=$(get_id)
+
+  if [[ $id = 'NONE' ]]; then
+    return 1
+  fi
+
+  local name email key sign
+  local id_name id_email id_key id_sign
+
+  name=$(get_attr user.name)
+  email=$(get_attr user.email)
+  key=$(get_attr user.signingKey)
+  sign=$(get_attr commit.gpgSign)
+
+  id_name=$(get_id_attr "$id" user.name)
+  id_email=$(get_id_attr "$id" user.email)
+  id_key=$(get_id_attr "$id" user.signingKey)
+  id_sign=$(get_id_attr "$id" commit.gpgSign)
+
+  if [[ $name = "$id_name" && $email = "$id_email" &&
+        $key = "$id_key" && $sign = "$id_sign" ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
+main "$@"
