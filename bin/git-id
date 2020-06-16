@@ -28,6 +28,9 @@ main() {
     exit
   fi
 
+  # TODO: handle the possibility that this directory is not accessible
+  mkdir -p ~/.gitid
+
   while getopts ':u:s:' opt; do
 
     if [[ $opt = '?' ]]; then
