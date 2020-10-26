@@ -5,6 +5,7 @@
 USAGE='[<options>]
   -u NAME  use identity NAME in the current repository
   -s NAME  save the current settings as identity NAME
+  -l       display the list of available identities
   -h       print this help message and exit
 
   With no options, print the active identity.  NAME must contain only
@@ -31,7 +32,7 @@ main() {
   # TODO: handle the possibility that this directory is not accessible
   mkdir -p ~/.gitid
 
-  while getopts ':u:s:' opt; do
+  while getopts ':u:s:l' opt; do
 
     if [[ $opt = '?' ]]; then
       die "git-id: invalid option -- '$OPTARG'"
@@ -45,11 +46,20 @@ main() {
     case $opt in
       u) use_id "$OPTARG" ;;
       s) save_id "$OPTARG" ;;
+      l) list_ids ;;
       *) ;;
     esac
 
   done
   shift $((OPTIND - 1))
+}
+
+list_ids() {
+  local id
+
+  for id in "$HOME"/.gitid/*; do
+    printf "%s\n" "${id##*/}"
+  done
 }
 
 print_id() {
